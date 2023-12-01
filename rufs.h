@@ -9,6 +9,7 @@
 #include <linux/limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #ifndef _TFS_H
 #define _TFS_H
@@ -16,7 +17,7 @@
 #define MAGIC_NUM 0x5C3A
 #define MAX_INUM 1024
 #define MAX_DNUM 16384
-
+#define BITS_IN_BYTE 8
 
 struct superblock {
 	uint32_t	magic_num;			/* magic number */
@@ -27,6 +28,7 @@ struct superblock {
 	uint32_t	i_start_blk;		/* start block of inode region */
 	uint32_t	d_start_blk;		/* start block of data block region */
 };
+struct superblock superblock;
 
 struct inode {
 	uint16_t	ino;				/* inode number */
