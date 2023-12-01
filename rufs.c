@@ -129,6 +129,52 @@ int writei(uint16_t ino, struct inode *inode) {
 /* 
  * directory operations
  */
+
+// //Reads all direct entries of the current directory to see if the desired
+// // file or sub-directory exists. If it exists, then put it into struct dirent dirent*
+// int dir_find_or_add(uint16_t ino, const char *fname, size_t name_len, struct dirent *dirent, bool find) {
+
+// 	// Step 1: Call readi() to get the inode using ino (inode number of current directory)
+// 	struct inode inode;
+// 	readi(ino, &inode);
+
+// 	// Step 2: Get data block of current directory from inode
+
+// 	// Step 3: Read directory's data block and check each directory entry.
+// 	//If the name matches, then copy directory entry to dirent structure
+
+// 	struct dirent curr_dir;
+
+// 	int direct_pointer_num;
+// 	for(direct_pointer_num = 0; direct_pointer_num < NUM_DIRECT_POINTERS_PER_INODE; direct_pointer_num++){
+// 		void *block_of_mem = malloc(BLOCK_SIZE);	
+// 		bio_read(inode.direct_ptr[direct_pointer_num], block_of_mem);
+// 		curr_dir = ((struct dirent *) block_of_mem)[0];
+// 		free(block_of_mem);
+// 		if(curr_dir.valid && strcmp(curr_dir.name, fname) == 0){
+// 			break;
+// 		}
+// 	}
+
+// 	if(find){
+// 		if(direct_pointer_num == NUM_DIRECT_POINTERS_PER_INODE){
+// 			return -1;
+// 		}
+
+// 		memcpy(dirent, &curr_dir, sizeof(struct dirent));
+// 	}
+// 	else{
+// 		if(direct_pointer_num != NUM_DIRECT_POINTERS_PER_INODE){
+// 			return -1;
+// 		}
+
+// 	}
+
+// 	return 0;
+// }
+
+//Reads all direct entries of the current directory to see if the desired
+// file or sub-directory exists. If it exists, then put it into struct dirent dirent*
 int dir_find(uint16_t ino, const char *fname, size_t name_len, struct dirent *dirent) {
 
 	// Step 1: Call readi() to get the inode using ino (inode number of current directory)
@@ -137,26 +183,76 @@ int dir_find(uint16_t ino, const char *fname, size_t name_len, struct dirent *di
 
 	// Step 2: Get data block of current directory from inode
 
-
 	// Step 3: Read directory's data block and check each directory entry.
 	//If the name matches, then copy directory entry to dirent structure
 
+	struct dirent curr_dir;
+	int direct_pointer_num;
+	for(direct_pointer_num = 0; direct_pointer_num < NUM_DIRECT_POINTERS_PER_INODE; direct_pointer_num++){
+		void *block_of_mem = malloc(BLOCK_SIZE);	
+		bio_read(inode.direct_ptr[direct_pointer_num], block_of_mem);
+		
+		curr_dir = ((struct dirent *) block_of_mem)[0];
+		free(block_of_mem);
+
+		if(curr_dir.valid && strcmp(curr_dir.name, fname) == 0){
+			break;
+		}
+	}
+
+	if(direct_pointer_num == NUM_DIRECT_POINTERS_PER_INODE){
+		return -1;
+	}
+
+	memcpy(dirent, &curr_dir, sizeof(struct dirent));
 	return 0;
 }
 
 int dir_add(struct inode dir_inode, uint16_t f_ino, const char *fname, size_t name_len) {
 
 	// Step 1: Read dir_inode's data block and check each directory entry of dir_inode
+	int open_index = -1;
 	
 	// Step 2: Check if fname (directory name) is already used in other entries
+	for(int direct_pointer_num = 0; direct_pointer_num < NUM_DIRECT_POINTERS_PER_INODE; direct_pointer_num++){
+		void *block_of_mem = malloc(BLOCK_SIZE);	
+		bio_read(dir_inode.direct_ptr[direct_pointer_num], block_of_mem);
+		
+		struct dirent curr_dir = ((struct dirent *) block_of_mem)[0];
+		free(block_of_mem);
+
+		if(!curr_dir.valid && open_index == -1){
+			open_index = direct_pointer_num;
+		}
+		elif(curr_dir.valid && strcmp(curr_dir.name, fname) == 0){
+			return -1;
+		}
+	}
+
+	if(open_index == -1){
+		return -1;
+	}
 
 	// Step 3: Add directory entry in dir_inode's data block and write to disk
 
 	// Allocate a new data block for this directory if it does not exist
+	int avail_blockno = get_avail_blkno();
+	if(avail_blockno == -1){
+		return -1;
+	}
 
 	// Update directory inode
+	dir_inode.direct_ptr[open_index] = avail_blockno;
 
 	// Write directory entry
+	void *memblock = malloc(BLOCK_SIZE);
+	bio_read(avail_blockno, memblock);
+
+	struct dirent new_dirent{.ino = dir_inode.ino, .valid = true, .name = fname, .len = strlen(fname)};
+	memcpy(memblock, new_dirent, sizeof(struct dirent));
+
+	bio_write(avail_blockno, memblock);
+	free(memblock);
 
 	return 0;
 }

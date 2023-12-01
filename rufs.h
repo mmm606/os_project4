@@ -30,21 +30,26 @@ struct superblock {
 };
 struct superblock superblock;
 
+#define NUM_DIRECT_POINTERS_PER_INODE 16
+#define NUM_INDIRECT_POINTERS_PER_INODE 8
+
 struct inode {
 	uint16_t	ino;				/* inode number */
 	uint16_t	valid;				/* validity of the inode */
 	uint32_t	size;				/* size of the file */
 	uint32_t	type;				/* type of the file */
 	uint32_t	link;				/* link count */
-	int			direct_ptr[16];		/* direct pointer to data block */
-	int			indirect_ptr[8];	/* indirect pointer to data block */
+	int			direct_ptr[NUM_DIRECT_POINTERS_PER_INODE];		/* direct pointer to data block */
+	int			indirect_ptr[NUM_INDIRECT_POINTERS_PER_INODE];	/* indirect pointer to data block */
 	struct stat	vstat;				/* inode stat */
 };
+
+#define DIRECTORY_NAME_STRING_LENGTH 208
 
 struct dirent {
 	uint16_t ino;					/* inode number of the directory entry */
 	uint16_t valid;					/* validity of the directory entry */
-	char name[208];					/* name of the directory entry */
+	char name[DIRECTORY_NAME_STRING_LENGTH];	/* name of the directory entry */
 	uint16_t len;					/* length of name */
 };
 
