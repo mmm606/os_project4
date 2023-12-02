@@ -23,6 +23,7 @@
 #include "rufs.h"
 
 char diskfile_path[PATH_MAX];
+int root_inode_number = 0;
 
 // Declare your in-memory data structures here
 
@@ -329,27 +330,27 @@ int rufs_mkfs() {
 
 	// update bitmap information for root directory
 	int root_data_block_no = get_avail_blkno();
-	int root_inode_block_no = get_avail_blkno();
+	root_inode_number = get_avail_blkno();
 
 	// update inode for root directory
 	// Here I am creating the inode that points to the data block
 	struct inode root_dirs_inode;
-	memset(root_dirs_inode, 0, sizeof(struct inode));
-	root_dirs_inode.ino = root_inode_block_no;
+	memset(&root_dirs_inode, 0, sizeof(struct inode));
+	root_dirs_inode.ino = root_inode_number;
 	root_dirs_inode.valid = true;
 	root_dirs_inode.size = sizeof(struct dirent);
 	root_dirs_inode.link = 1;
 	root_dirs_inode.type = 0;
 	root_dirs_inode.direct_ptr[0] = root_data_block_no;
-	writei(root_inode_block_no, root_dirs_inode);
+	writei(root_inode_number, &root_dirs_inode);
 
 	// Here I am creating the root directory pointed to by the inode
 	char *root_name = "/";
-	struct dirent new_dir{.ino = root_inode_block_no, .valid = true, .name = root_name, strlen(root_name)};
+	struct dirent new_dir{.ino = root_inode_number, .valid = true, .name = root_name, strlen(root_name)};
 
-	memcpy(block_mem, new_dirent, sizeof(struct dirent));
+	memcpy(block_mem, &new_dir, sizeof(struct dirent));
 
-	bio_write(avail_blockno, block_mem);
+	bio_write(root_inode_number, block_mem);
 
 	free(block_mem);
 	return 0;
@@ -358,14 +359,15 @@ int rufs_mkfs() {
 
 /* 
  * FUSE file operations
- */
+*/
+//TODO: I always just calls mkfs, not sure what to do otherwise, especially with this param
 static void *rufs_init(struct fuse_conn_info *conn) {
 
 	// Step 1a: If disk file is not found, call mkfs
 
-  // Step 1b: If disk file is found, just initialize in-memory data structures
-  // and read superblock from disk
-
+	// Step 1b: If disk file is found, just initialize in-memory data structures
+	// and read superblock from disk
+	rufs_mkfs();
 	return NULL;
 }
 
@@ -374,15 +376,19 @@ static void rufs_destroy(void *userdata) {
 	// Step 1: De-allocate in-memory data structures
 
 	// Step 2: Close diskfile
-
+	dev_close();
 }
 
+//TODO: NOT REALLY SURE WHAT THIS IS SUPPOSED TO DO
 static int rufs_getattr(const char *path, struct stat *stbuf) {
 
 	// Step 1: call get_node_by_path() to get inode from path
+	struct inode inode;
+	get_node_by_path(path, root_inode_number, inode);
 
 	// Step 2: fill attribute of file into stbuf from inode
-
+	// inode.
+	stbuf.
 		stbuf->st_mode   = S_IFDIR | 0755;
 		stbuf->st_nlink  = 2;
 		time(&stbuf->st_mtime);
