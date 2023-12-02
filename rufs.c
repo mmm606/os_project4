@@ -248,7 +248,7 @@ int dir_add(struct inode dir_inode, uint16_t f_ino, const char *fname, size_t na
 	void *memblock = malloc(BLOCK_SIZE);
 	bio_read(avail_blockno, memblock);
 
-	struct dirent new_dirent{.ino = dir_inode.ino, .valid = true, .name = fname, .len = strlen(fname)};
+	struct dirent new_dirent{.ino = f_ino, .valid = true, .name = fname, .len = strlen(fname)};
 	memcpy(memblock, new_dirent, sizeof(struct dirent));
 
 	bio_write(avail_blockno, memblock);
@@ -268,6 +268,12 @@ int dir_remove(struct inode dir_inode, const char *fname, size_t name_len) {
 	return 0;
 }
 
+// char **split(char *strin, int start, int range char delim){
+// 	for(int i = start; i < start + range; i++){
+// 		split
+// 	}
+// }
+
 /* 
  * namei operation
  */
@@ -275,7 +281,21 @@ int get_node_by_path(const char *path, uint16_t ino, struct inode *inode) {
 	
 	// Step 1: Resolve the path name, walk through path, and finally, find its inode.
 	// Note: You could either implement it in a iterative way or recursive way
+	if(path[0] != '/'){
+		return -1;
+	}
 
+	uint16_t current_parent_inode = ino;
+
+	for(char *curr_token = strtok(path, '/'); curr_token != NULL; curr_token = strtok(NULL, '/')){
+		struct dirent next_dirent;
+
+		dir_find(current_parent_inode, curr_token, strlen(curr_token), &next_dirent);
+
+		current_parent_inode = next_dirent.ino;
+
+	}
+	readi(current_parent_inode, inode);
 	return 0;
 }
 
@@ -284,18 +304,54 @@ int get_node_by_path(const char *path, uint16_t ino, struct inode *inode) {
  */
 int rufs_mkfs() {
 
+	void *block_mem = calloc(1, BLOCK_SIZE);
+
 	// Call dev_init() to initialize (Create) Diskfile
+	dev_init(diskfile_path);
 
 	// write superblock information
+	bio_read(0, block_mem);
+	superblock = *((struct superblock *) block_mem);
+
+	memset(block_mem, 0, BLOCK_SIZE);
 
 	// initialize inode bitmap
+	bio_write(superblock.i_bitmap_blk, block_mem);
+	for(int i = superblock.i_start_blk; i < MAX_INUM; i++){
+		bio_write(i, block_mem);
+	}
 
 	// initialize data block bitmap
+	bio_write(superblock.d_bitmap_blk, block_mem);
+	for(int i = superblock.d_start_blk; i < MAX_DNUM; i++){
+		bio_write(i, block_mem);
+	}
 
 	// update bitmap information for root directory
+	int root_data_block_no = get_avail_blkno();
+	int root_inode_block_no = get_avail_blkno();
 
 	// update inode for root directory
+	// Here I am creating the inode that points to the data block
+	struct inode root_dirs_inode;
+	memset(root_dirs_inode, 0, sizeof(struct inode));
+	root_dirs_inode.ino = root_inode_block_no;
+	root_dirs_inode.valid = true;
+	root_dirs_inode.size = sizeof(struct dirent);
+	root_dirs_inode.link = 1;
+	root_dirs_inode.type = 0;
+	root_dirs_inode.direct_ptr[0] = root_data_block_no;
+	writei(root_inode_block_no, root_dirs_inode);
 
+	// Here I am creating the root directory pointed to by the inode
+	char *root_name = "/";
+	struct dirent new_dir{.ino = root_inode_block_no, .valid = true, .name = root_name, strlen(root_name)};
+
+	memcpy(block_mem, new_dirent, sizeof(struct dirent));
+
+	bio_write(avail_blockno, block_mem);
+
+	free(block_mem);
 	return 0;
 }
 
