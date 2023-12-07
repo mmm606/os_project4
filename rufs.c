@@ -127,52 +127,7 @@ int writei(uint16_t ino, struct inode *inode) {
 }
 
 
-/* 
- * directory operations
- */
-
-// //Reads all direct entries of the current directory to see if the desired
-// // file or sub-directory exists. If it exists, then put it into struct dirent dirent*
-// int dir_find_or_add(uint16_t ino, const char *fname, size_t name_len, struct dirent *dirent, bool find) {
-
-// 	// Step 1: Call readi() to get the inode using ino (inode number of current directory)
-// 	struct inode inode;
-// 	readi(ino, &inode);
-
-// 	// Step 2: Get data block of current directory from inode
-
-// 	// Step 3: Read directory's data block and check each directory entry.
-// 	//If the name matches, then copy directory entry to dirent structure
-
-// 	struct dirent curr_dir;
-
-// 	int direct_pointer_num;
-// 	for(direct_pointer_num = 0; direct_pointer_num < NUM_DIRECT_POINTERS_PER_INODE; direct_pointer_num++){
-// 		void *block_of_mem = malloc(BLOCK_SIZE);	
-// 		bio_read(inode.direct_ptr[direct_pointer_num], block_of_mem);
-// 		curr_dir = ((struct dirent *) block_of_mem)[0];
-// 		free(block_of_mem);
-// 		if(curr_dir.valid && strcmp(curr_dir.name, fname) == 0){
-// 			break;
-// 		}
-// 	}
-
-// 	if(find){
-// 		if(direct_pointer_num == NUM_DIRECT_POINTERS_PER_INODE){
-// 			return -1;
-// 		}
-
-// 		memcpy(dirent, &curr_dir, sizeof(struct dirent));
-// 	}
-// 	else{
-// 		if(direct_pointer_num != NUM_DIRECT_POINTERS_PER_INODE){
-// 			return -1;
-// 		}
-
-// 	}
-
-// 	return 0;
-// }
+//TODO: am I doing this right? just looping through direct pointers?
 
 //Reads all direct entries of the current directory to see if the desired
 // file or sub-directory exists. If it exists, then put it into struct dirent dirent*
@@ -183,9 +138,10 @@ int dir_find(uint16_t ino, const char *fname, size_t name_len, struct dirent *di
 	readi(ino, &inode);
 
 	// Step 2: Get data block of current directory from inode
-
+	
 	// Step 3: Read directory's data block and check each directory entry.
 	//If the name matches, then copy directory entry to dirent structure
+
 
 	struct dirent curr_dir;
 	int direct_pointer_num;
@@ -209,6 +165,8 @@ int dir_find(uint16_t ino, const char *fname, size_t name_len, struct dirent *di
 	return 0;
 }
 
+///TODO: I am looping through the direct pointers at the inode, interpreting data at the memory block as a dir and checking if its valid?
+// all direct pointers are directories?
 int dir_add(struct inode dir_inode, uint16_t f_ino, const char *fname, size_t name_len) {
 
 	// Step 1: Read dir_inode's data block and check each directory entry of dir_inode
@@ -222,7 +180,7 @@ int dir_add(struct inode dir_inode, uint16_t f_ino, const char *fname, size_t na
 		struct dirent curr_dir = ((struct dirent *) block_of_mem)[0];
 		free(block_of_mem);
 
-		if(!curr_dir.valid && open_index == -1){
+		if(!curr_dir.valid || open_index == -1){
 			open_index = direct_pointer_num;
 		}
 		elif(curr_dir.valid && strcmp(curr_dir.name, fname) == 0){
@@ -250,7 +208,7 @@ int dir_add(struct inode dir_inode, uint16_t f_ino, const char *fname, size_t na
 	bio_read(avail_blockno, memblock);
 
 	struct dirent new_dirent{.ino = f_ino, .valid = true, .name = fname, .len = strlen(fname)};
-	memcpy(memblock, new_dirent, sizeof(struct dirent));
+	memcpy(memblock, &new_dirent, sizeof(struct dirent));
 
 	bio_write(avail_blockno, memblock);
 	free(memblock);
@@ -364,6 +322,8 @@ int rufs_mkfs() {
 static void *rufs_init(struct fuse_conn_info *conn) {
 
 	// Step 1a: If disk file is not found, call mkfs
+
+	//TODO: don't call rufs_mkfs if file already exists, don't forget to make superblock
 
 	// Step 1b: If disk file is found, just initialize in-memory data structures
 	// and read superblock from disk

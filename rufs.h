@@ -44,12 +44,13 @@ struct inode {
 	struct stat	vstat;				/* inode stat */
 };
 
-#define DIRECTORY_NAME_STRING_LENGTH 208
+#define INTER_DIRECTORY_NAME_LENGTH 208 //make this 250 bytes
 
+//this represents an entry in a directory, could be anything check the inode
 struct dirent {
 	uint16_t ino;					/* inode number of the directory entry */
 	uint16_t valid;					/* validity of the directory entry */
-	char name[DIRECTORY_NAME_STRING_LENGTH];	/* name of the directory entry */
+	char name[INTER_DIRECTORY_NAME_LENGTH];	/* name of the directory entry */
 	uint16_t len;					/* length of name */
 };
 
