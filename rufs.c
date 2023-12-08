@@ -24,61 +24,169 @@
 
 char diskfile_path[PATH_MAX];
 
+struct superblock superblock;
+
 // Declare your in-memory data structures here
+int claim_next_avail_bit(bool inode) {
+
+	bitmap_t *bitmap = malloc(sizeof(BLOCK_SIZE));
+
+	// Step 1: Read bitmap from disk
+	int block_num = superblock.i_bitmap_blk;
+	size_t limit = MAX_INUM;
+	if(!inode){
+		block_num = superblock.d_bitmap_blk;
+		limit = MAX_DNUM;
+	}
+	//TODO: make sure we read how much we need and don't read garbage maybe make it calloc
+	bio_read(block_num, bitmap);
+	
+	// Step 2: Traverse bitmap to find an available slot
+
+	int bit_num = 0;  
+	int char_num = 0; 
+	for(char_num = 0; char_num < limit / BITS_IN_BYTE; char_num++){
+		for(bit_num = 0; bit_num < BITS_IN_BYTE; bit_num++){
+			uint8_t val = get_bitmap(bitmap[char_num], bit_num);
+			if(val == 0){
+				break;	
+			}
+		}
+	}
+	
+	// Step 3: Update bitmap and write to disk 
+
+	int next_avail = (char_num * BITS_IN_BYTE) + bit_num;
+
+	if(next_avail > limit){
+		return -1;
+	}
+
+	set_bitmap(bitmap[char_num], bit_num);
+	bio_write(block_num, bitmap);
+
+	free(bitmap);
+
+	return next_avail;
+}
+
 
 /* 
  * Get available inode number from bitmap
- */
+*/
 int get_avail_ino() {
-
-	// Step 1: Read inode bitmap from disk
-	
-	// Step 2: Traverse inode bitmap to find an available slot
-
-	// Step 3: Update inode bitmap and write to disk 
-
-	return 0;
+	return claim_next_avail_bit(true);
 }
 
 /* 
  * Get available data block number from bitmap
  */
 int get_avail_blkno() {
+	return claim_next_avail_bit(false);	
+}
+/* 
+ * inode operations
+*/
+//will read if read == true, will write otherwise
+int read_or_write_i(uint16_t ino, struct inode *inode, bool read) {
 
-	// Step 1: Read data block bitmap from disk
+	// Step 1: Get the inode's on-disk block number
+	int whole_block_number = superblock.i_bitmap_blk + (ino / sizeof(struct inode));
+
+	// Step 2: Get offset of the inode in the inode on-disk block
+	int intra_block_offet = (ino % sizeof(struct inode));
+
+	// Step 3: Read the block from disk
+	//	if read == true just copy from the disk to the inode struct
+	//	otherwise augment what the block looks like and write it back
+
+	struct inode* inode_block_buffer = malloc(sizeof(BLOCK_SIZE));
+	bio_read(whole_block_number, inode_block_buffer);
+
+	if(read){
+		memcpy(inode, inode_block_buffer + intra_block_offet, sizeof(struct inode));
+	}
+	else{
+		memcpy(inode_block_buffer + intra_block_offet, inode, sizeof(struct inode));
+		bio_write(whole_block_number, inode_block_buffer);
+	}
 	
-	// Step 2: Traverse data block bitmap to find an available slot
-
-	// Step 3: Update data block bitmap and write to disk 
+	free(inode_block_buffer);
 
 	return 0;
 }
 
-/* 
- * inode operations
- */
 int readi(uint16_t ino, struct inode *inode) {
-
-  // Step 1: Get the inode's on-disk block number
-
-  // Step 2: Get offset of the inode in the inode on-disk block
-
-  // Step 3: Read the block from disk and then copy into inode structure
-
-	return 0;
+	return read_or_write_i(ino, inode, true);
 }
 
 int writei(uint16_t ino, struct inode *inode) {
-
-	// Step 1: Get the block number where this inode resides on disk
-	
-	// Step 2: Get the offset in the block where this inode resides on disk
-
-	// Step 3: Write inode to disk 
-
-	return 0;
+	return read_or_write_i(ino, inode, false);
 }
 
+
+
+//return true if found, false otherwise, populates given dirent struct if it isn't null
+bool search_block_of_dir_entries(int block_number, char *fname, struct dirent *found_directory_entry){
+	struct dirent *block_of_dir_entries = malloc(BLOCK_SIZE);
+	bio_read(block_number, block_of_dir_entries);
+
+	int i = 0;
+	for(i = 0; i < BLOCK_SIZE; i += sizeof(struct dirent)){
+		struct dirent curr_dir_entry = block_of_dir_entries[i];
+		if(curr_dir_entry.valid && strcmp(curr_dir_entry.name, fname) == 0){
+			memcpy(found_directory_entry, &curr_dir_entry, sizeof(struct dirent));
+			break;
+		}
+	}
+
+	free(block_of_dir_entries);
+
+	if(i < BLOCK_SIZE){
+		return true;
+	}
+
+	memset(found_directory_entry, 0, sizeof(struct dirent));
+	return false;
+}		
+
+bool search_block_number_containing_dir_entries(int block_number){
+
+}
+
+//return true if found, false otherwise, populates given dirent struct if it isn't null
+bool search_dir_given_inode(struct inode dir_inode, char * fname, struct dirent *found_directory_entry){
+
+	int i = 0;
+	for(i = 0; i < DIRECT_POINTERS_PER_INODE; i ++){
+
+		if(search_block_of_dir_entries(dir_inode.direct_ptr[i], fname, found_directory_entry)){
+			break;
+		}
+	}
+
+	if(i < DIRECT_POINTERS_PER_INODE){
+		return true;
+	}
+
+	for(i = 0; i < INDIRECT_POINTERS_PER_INODE; i++){
+		int *block_number_array = malloc(BLOCK_SIZE);
+		bio_read(dir_inode.indirect_ptr[i], block_number_array);
+
+		int index_into_block_number_array = 0;
+		for(index_into_block_number_array = 0; index_into_block_number_array < BLOCK_SIZE / sizeof(int); i++){
+			if(search_block_of_dir_entries(block_number_array[index_into_block_number_array], fname, found_directory_entry)){
+				break;
+			}
+		}
+		free(block_number_array);
+		if(index_into_block_number_array < BLOCK_SIZE / sizeof(int)){
+			return true;
+		}
+	}
+
+	return false;
+}
 
 /* 
  * directory operations
@@ -86,18 +194,24 @@ int writei(uint16_t ino, struct inode *inode) {
 int dir_find(uint16_t ino, const char *fname, size_t name_len, struct dirent *dirent) {
 
   // Step 1: Call readi() to get the inode using ino (inode number of current directory)
+	struct inode inode;
+	readi(ino, &inode);
 
-  // Step 2: Get data block of current directory from inode
+	// Step 2: Get data block of current directory from inode
 
-  // Step 3: Read directory's data block and check each directory entry.
-  //If the name matches, then copy directory entry to dirent structure
 
-	return 0;
+	// Step 3: Read directory's data block and check each directory entry.
+	//If the name matches, then copy directory entry to dirent structure
+	if(search_dir_given_inode(inode, fname, dirent)){
+		return 0;
+	}
+	return -1;
 }
 
 int dir_add(struct inode dir_inode, uint16_t f_ino, const char *fname, size_t name_len) {
 
 	// Step 1: Read dir_inode's data block and check each directory entry of dir_inode
+
 	
 	// Step 2: Check if fname (directory name) is already used in other entries
 
@@ -130,6 +244,8 @@ int get_node_by_path(const char *path, uint16_t ino, struct inode *inode) {
 	
 	// Step 1: Resolve the path name, walk through path, and finally, find its inode.
 	// Note: You could either implement it in a iterative way or recursive way
+
+	
 
 	return 0;
 }

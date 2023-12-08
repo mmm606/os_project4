@@ -9,6 +9,7 @@
 #include <linux/limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #ifndef _TFS_H
 #define _TFS_H
@@ -16,6 +17,7 @@
 #define MAGIC_NUM 0x5C3A
 #define MAX_INUM 1024
 #define MAX_DNUM 16384
+#define BITS_IN_BYTE 8
 
 
 struct superblock {
@@ -28,14 +30,18 @@ struct superblock {
 	uint32_t	d_start_blk;		/* start block of data block region */
 };
 
+
+#define DIRECT_POINTERS_PER_INODE 16
+#define INDIRECT_POINTERS_PER_INODE 8
+
 struct inode {
 	uint16_t	ino;				/* inode number */
 	uint16_t	valid;				/* validity of the inode */
 	uint32_t	size;				/* size of the file */
 	uint32_t	type;				/* type of the file */
 	uint32_t	link;				/* link count */
-	int			direct_ptr[16];		/* direct pointer to data block */
-	int			indirect_ptr[8];	/* indirect pointer to data block */
+	int			direct_ptr[DIRECT_POINTERS_PER_INODE];		/* direct pointer to data block */
+	int			indirect_ptr[INDIRECT_POINTERS_PER_INODE];	/* indirect pointer to data block */
 	struct stat	vstat;				/* inode stat */
 };
 
